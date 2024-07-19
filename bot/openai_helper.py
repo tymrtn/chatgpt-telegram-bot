@@ -53,8 +53,18 @@ def default_max_tokens(model: str) -> int:
         return 4096
     elif model in GPT_4_128K_MODELS:
         return 4096
-    elif model in GPT_4O_MODELS + PERPLEXITY_MODELS:
+    elif model in GPT_4O_MODELS + PERPLEXITY_MODELS + PERPLEXITY_MODELS:
         return 4096
+
+def default_temperature(model: str) -> float:
+    if model in PERPLEXITY_MODELS:
+        return None
+    return 1.0
+
+def default_penalty(model: str) -> float:
+    if model in PERPLEXITY_MODELS:
+        return None
+    return 0.0
 
 def default_temperature(model: str) -> float:
     if model in PERPLEXITY_MODELS:
@@ -81,6 +91,8 @@ def are_functions_available(model: str) -> bool:
     if model in ("gpt-3.5-turbo-0613", "gpt-3.5-turbo-16k-0613"):
         return datetime.date.today() < datetime.date(2024, 6, 13)
     if model == 'gpt-4-vision-preview':
+        return False
+    if model in PERPLEXITY_MODELS:
         return False
     if model in PERPLEXITY_MODELS:
         return False
@@ -123,6 +135,7 @@ class OpenAIHelper:
         :param config: A dictionary containing the GPT configuration
         :param plugin_manager: The plugin manager
         """
+        base_url = "https://api.perplexity.ai" if config["model"] in PERPLEXITY_MODELS else None
         base_url = "https://api.perplexity.ai" if config["model"] in PERPLEXITY_MODELS else None
         http_client = httpx.AsyncClient(proxies=config['proxy']) if 'proxy' in config else None
         self.client = openai.AsyncOpenAI(api_key=config['api_key'], http_client=http_client, base_url=base_url)
@@ -637,23 +650,31 @@ class OpenAIHelper:
 
     def __max_model_tokens(self):
         base = 4096
+        max_tokens = 0
         if self.config['model'] in GPT_3_MODELS:
-            return base
-        if self.config['model'] in GPT_3_16K_MODELS:
-            return base * 4
-        if self.config['model'] in GPT_4_MODELS:
-            return base * 2
-        if self.config['model'] in GPT_4_32K_MODELS:
-            return base * 8
-        if self.config['model'] in GPT_4_VISION_MODELS:
-            return base * 31
-        if self.config['model'] in GPT_4_128K_MODELS:
-            return base * 31
-        if self.config['model'] in GPT_4O_MODELS + PERPLEXITY_MODELS:
-            return base * 31
-        raise NotImplementedError(
-            f"Max tokens for model {self.config['model']} is not implemented yet."
-        )
+            max_tokens = base
+        elif self.config['model'] in GPT_3_16K_MODELS:
+            max_tokens = base * 4
+        elif self.config['model'] in GPT_4_MODELS:
+            max_tokens = base * 2
+        elif self.config['model'] in GPT_4_32K_MODELS:
+            max_tokens = base * 8
+        elif self.config['model'] in GPT_4_VISION_MODELS:
+            max_tokens = base * 31
+        elif self.config['model'] in GPT_4_128K_MODELS:
+            max_tokens = base * 31
+        elif self.config['model'] in GPT_4O_MODELS + PERPLEXITY_MODELS:
+            max_tokens = base * 31
+        else:
+            logging.warning(
+                f"Max tokens for model {self.config['model']} is not implemented yet."
+            )
+            max_tokens = 200000
+
+        if self.config['max_tokens'] >= max_tokens:
+            raise Exception(f"max_tokens {self.config['max_tokens']} should be less than max tokens {max_tokens} for model {self.config['model']}.")
+
+        return max_tokens
 
     # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
     def __count_tokens(self, messages) -> int:
@@ -667,7 +688,9 @@ class OpenAIHelper:
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
             encoding = tiktoken.get_encoding("cl100k_base")
+            encoding = tiktoken.get_encoding("cl100k_base")
 
+        if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
         if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
             tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             tokens_per_name = -1  # if there's a name, the role is omitted
@@ -675,7 +698,9 @@ class OpenAIHelper:
             tokens_per_message = 3
             tokens_per_name = 1
         else:
-            raise NotImplementedError(f"""num_tokens_from_messages() is not implemented for model {model}.""")
+            tokens_per_message = 3
+            tokens_per_name = 1
+            logging.warn(f"""num_tokens_from_messages() is not implemented for model {model}.""")
         num_tokens = 0
         for message in messages:
             num_tokens += tokens_per_message
