@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        
+    
+        {
+            "name": "Python: Migrador",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/bot/main.py",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/.venv/bin/python3.12",
+            "env": {
+                "IS_PRODUCTION": "False",
+                "PYTHONBREAKPOINT": "0",
+                "STRIPE_LIVE_TOKEN": "284685063:TEST:N2ZiM2RiYThkMzRj",
+            },
+            "envFile": "${workspaceFolder}/.venv"
+        }
+    ]
+}

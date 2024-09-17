@@ -30,7 +30,9 @@ GPT_4_32K_MODELS = ("gpt-4-32k", "gpt-4-32k-0314", "gpt-4-32k-0613")
 GPT_4_VISION_MODELS = ("gpt-4-vision-preview",)
 GPT_4_128K_MODELS = ("gpt-4-1106-preview","gpt-4-0125-preview","gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09")
 GPT_4O_MODELS = ("gpt-4o",)
-GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS + PERPLEXITY_MODELS
+O1_MODELS = ("o1-preview", "o1-mini")
+
+GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + PERPLEXITY_MODELS + GPT_4O_MODELS + O1_MODELS
 
 def default_max_tokens(model: str) -> int:
     """
@@ -55,6 +57,8 @@ def default_max_tokens(model: str) -> int:
         return 4096
     elif model in GPT_4O_MODELS + PERPLEXITY_MODELS + PERPLEXITY_MODELS:
         return 4096
+    elif model in O1_MODELS:
+        return 32768
 
 def default_temperature(model: str) -> float:
     if model in PERPLEXITY_MODELS:
@@ -91,8 +95,6 @@ def are_functions_available(model: str) -> bool:
     if model in ("gpt-3.5-turbo-0613", "gpt-3.5-turbo-16k-0613"):
         return datetime.date.today() < datetime.date(2024, 6, 13)
     if model == 'gpt-4-vision-preview':
-        return False
-    if model in PERPLEXITY_MODELS:
         return False
     if model in PERPLEXITY_MODELS:
         return False
@@ -278,19 +280,28 @@ class OpenAIHelper:
             common_args = {
                 'model': self.config['model'] if not self.conversations_vision[chat_id] else self.config['vision_model'],
                 'messages': self.conversations[chat_id],
-                'temperature': self.config['temperature'],
-                'n': self.config['n_choices'],
-                'max_tokens': self.config['max_tokens'],
-                'presence_penalty': self.config['presence_penalty'],
-                'frequency_penalty': self.config['frequency_penalty'],
-                'stream': stream
             }
 
-            if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
-                functions = self.plugin_manager.get_functions_specs()
-                if len(functions) > 0:
-                    common_args['functions'] = self.plugin_manager.get_functions_specs()
-                    common_args['function_call'] = 'auto'
+            if self.config['model'] in O1_MODELS:
+                common_args['max_completion_tokens'] = self.config['max_tokens'] # o1 series only supports max_completion_tokens
+                # 'temperature', 'top_p', 'n', 'presence_penalty', 'frequency_penalty' are currently fixed and cannot be changed
+            else:
+                # Parameters for other models
+                common_args.update({
+                    'temperature': self.config['temperature'],
+                    'n': self.config['n_choices'],
+                    'max_tokens': self.config['max_tokens'],
+                    'presence_penalty': self.config['presence_penalty'],
+                    'frequency_penalty': self.config['frequency_penalty'],
+                    'stream': stream,
+                })
+            
+                if self.config['enable_functions'] and not self.conversations_vision.get(chat_id, False):
+                    functions = self.plugin_manager.get_functions_specs()
+                    if functions:
+                        common_args['functions'] = functions
+                        common_args['function_call'] = 'auto'
+
             return await self.client.chat.completions.create(**common_args)
 
         except openai.RateLimitError as e:
@@ -600,7 +611,13 @@ class OpenAIHelper:
         """
         if content == '':
             content = self.config['assistant_prompt']
-        self.conversations[chat_id] = [{"role": "system", "content": content}]
+
+        if self.config['model'] not in O1_MODELS:
+            # If not using 'o1' models, add a system message
+            self.conversations[chat_id] = [{"role": "system", "content": content}]
+        else:
+            self.conversations[chat_id] = []
+
         self.conversations_vision[chat_id] = False
 
     def __max_age_reached(self, chat_id) -> bool:
@@ -652,29 +669,24 @@ class OpenAIHelper:
         base = 4096
         max_tokens = 0
         if self.config['model'] in GPT_3_MODELS:
-            max_tokens = base
-        elif self.config['model'] in GPT_3_16K_MODELS:
-            max_tokens = base * 4
-        elif self.config['model'] in GPT_4_MODELS:
-            max_tokens = base * 2
-        elif self.config['model'] in GPT_4_32K_MODELS:
-            max_tokens = base * 8
-        elif self.config['model'] in GPT_4_VISION_MODELS:
-            max_tokens = base * 31
-        elif self.config['model'] in GPT_4_128K_MODELS:
-            max_tokens = base * 31
-        elif self.config['model'] in GPT_4O_MODELS + PERPLEXITY_MODELS:
-            max_tokens = base * 31
-        else:
-            logging.warning(
-                f"Max tokens for model {self.config['model']} is not implemented yet."
-            )
-            max_tokens = 200000
-
-        if self.config['max_tokens'] >= max_tokens:
-            raise Exception(f"max_tokens {self.config['max_tokens']} should be less than max tokens {max_tokens} for model {self.config['model']}.")
-
-        return max_tokens
+            return base
+        if self.config['model'] in GPT_3_16K_MODELS:
+            return base * 4
+        if self.config['model'] in GPT_4_MODELS:
+            return base * 2
+        if self.config['model'] in GPT_4_32K_MODELS:
+            return base * 8
+        if self.config['model'] in GPT_4_VISION_MODELS:
+            return base * 31
+        if self.config['model'] in GPT_4_128K_MODELS:
+            return base * 31
+        if self.config['model'] in GPT_4O_MODELS:
+            return base * 31
+        if self.config['model'] in O1_MODELS:
+            return base * 31
+        raise NotImplementedError(
+            f"Max tokens for model {self.config['model']} is not implemented yet."
+        )
 
     # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
     def __count_tokens(self, messages) -> int:
@@ -688,13 +700,11 @@ class OpenAIHelper:
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
             encoding = tiktoken.get_encoding("cl100k_base")
-            encoding = tiktoken.get_encoding("cl100k_base")
 
-        if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
         if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
             tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             tokens_per_name = -1  # if there's a name, the role is omitted
-        elif model in GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS:
+        elif model in GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS + O1_MODELS:
             tokens_per_message = 3
             tokens_per_name = 1
         else:
