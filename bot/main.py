@@ -33,9 +33,9 @@ def main():
         'model': model,
         'max_tokens': int(os.environ.get('MAX_TOKENS', default_max_tokens(model=model))),
         'n_choices': int(os.environ.get('N_CHOICES', 1)),
-        'temperature': os.environ.get('TEMPERATURE', default_temperature(model=model)),
-        'presence_penalty': os.environ.get('PRESENCE_PENALTY', default_penalty(model=model)),
-        'frequency_penalty': os.environ.get('FREQUENCY_PENALTY', default_penalty(model=model)),
+        'temperature': float(os.environ.get('TEMPERATURE', default_temperature(model=model))),
+        'presence_penalty': float(os.environ.get('PRESENCE_PENALTY', default_penalty(model=model))),
+        'frequency_penalty': float(os.environ.get('FREQUENCY_PENALTY', default_penalty(model=model))),
     }
     openai_config = {
         **generation_config,
