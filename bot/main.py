@@ -7,6 +7,14 @@ from plugin_manager import PluginManager
 from openai_helper import OpenAIHelper, default_max_tokens, default_temperature, default_penalty, are_functions_available
 from telegram_bot import ChatGPTTelegramBot
 
+def load_prompt(prompt_name):
+    prompt_path = os.path.join(os.path.dirname(__file__), '..', 'prompts', f'{prompt_name}.txt')
+    try:
+        with open(prompt_path, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        logging.warning(f"Prompt file {prompt_name}.txt not found. Using default value.")
+        return None
 
 def main():
     # Read .env file
@@ -45,7 +53,7 @@ def main():
         'proxy': os.environ.get('PROXY', None) or os.environ.get('OPENAI_PROXY', None),
         'max_history_size': int(os.environ.get('MAX_HISTORY_SIZE', 15)),
         'max_conversation_age_minutes': int(os.environ.get('MAX_CONVERSATION_AGE_MINUTES', 180)),
-        'assistant_prompt': os.environ.get('ASSISTANT_PROMPT', 'You are a helpful assistant.'),
+        'assistant_prompt': load_prompt('ASSISTANT_PROMPT') or 'You are a helpful assistant.',
         'image_model': os.environ.get('IMAGE_MODEL', 'dall-e-2'),
         'image_quality': os.environ.get('IMAGE_QUALITY', 'standard'),
         'image_style': os.environ.get('IMAGE_STYLE', 'vivid'),

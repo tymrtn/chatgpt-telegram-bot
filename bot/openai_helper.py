@@ -23,14 +23,14 @@ from plugin_manager import PluginManager
 # Models can be found here: https://platform.openai.com/docs/models/overview
 # Models gpt-3.5-turbo-0613 and  gpt-3.5-turbo-16k-0613 will be deprecated on June 13, 2024
 PERPLEXITY_MODELS = ("llama-3-sonar-large-32k-chat",)
-GPT_3_MODELS = ("gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-3.5-turbo-0613")
-GPT_3_16K_MODELS = ("gpt-3.5-turbo-16k", "gpt-3.5-turbo-16k-0613", "gpt-3.5-turbo-1106", "gpt-3.5-turbo-0125")
-GPT_4_MODELS = ("gpt-4", "gpt-4-0314", "gpt-4-0613", "gpt-4-turbo-preview")
-GPT_4_32K_MODELS = ("gpt-4-32k", "gpt-4-32k-0314", "gpt-4-32k-0613")
-GPT_4_VISION_MODELS = ("gpt-4-vision-preview",)
-GPT_4_128K_MODELS = ("gpt-4-1106-preview","gpt-4-0125-preview","gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09")
-GPT_4O_MODELS = ("gpt-4o",)
-O1_MODELS = ("o1-preview", "o1-mini")
+GPT_3_MODELS = ("gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-3.5-turbo-0613", "openai/gpt-3.5-turbo")
+GPT_3_16K_MODELS = ("gpt-3.5-turbo-16k", "gpt-3.5-turbo-16k-0613", "gpt-3.5-turbo-1106", "gpt-3.5-turbo-0125", "openai/gpt-3.5-turbo-16k")
+GPT_4_MODELS = ("gpt-4", "gpt-4-0314", "gpt-4-0613", "gpt-4-turbo-preview", "openai/gpt-4")
+GPT_4_32K_MODELS = ("gpt-4-32k", "gpt-4-32k-0314", "gpt-4-32k-0613", "openai/gpt-4-32k")
+GPT_4_VISION_MODELS = ("gpt-4-vision-preview", "openai/gpt-4-vision-preview")
+GPT_4_128K_MODELS = ("gpt-4-1106-preview", "gpt-4-0125-preview", "gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "openai/gpt-4-turbo")
+GPT_4O_MODELS = ("gpt-4o", "openai/gpt-4o", "openai/gpt-4o-mini")
+O1_MODELS = ("o1-preview", "o1-mini", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-sonnet-20240229", "openai/o1-preview", "openai/o1-mini")
 
 GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + PERPLEXITY_MODELS + GPT_4O_MODELS + O1_MODELS
 
@@ -138,9 +138,18 @@ class OpenAIHelper:
         :param plugin_manager: The plugin manager
         """
         base_url = "https://api.perplexity.ai" if config["model"] in PERPLEXITY_MODELS else None
-        base_url = "https://api.perplexity.ai" if config["model"] in PERPLEXITY_MODELS else None
+        use_openrouter = os.getenv("USE_OPENROUTER", "false").lower() == "true"
+        api_key = os.getenv("OPENROUTER_API_KEY") if use_openrouter else os.getenv("OPENAI_API_KEY")
+        
+        base_url = "https://openrouter.ai/api/v1" if use_openrouter else "https://api.openai.com/v1"
+        
         http_client = httpx.AsyncClient(proxies=config['proxy']) if 'proxy' in config else None
-        self.client = openai.AsyncOpenAI(api_key=config['api_key'], http_client=http_client, base_url=base_url)
+        self.client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client, base_url=base_url)
+        
+        # If using OpenRouter, prepend "openai/" to the model name if it's not already an OpenRouter-specific model
+        if use_openrouter and not config['model'].startswith(("openai/", "anthropic/", "google/", "meta-llama/", "mistralai/")):
+            config['model'] = f"openai/{config['model']}"
+        
         self.config = config
         self.plugin_manager = plugin_manager
         self.conversations: dict[int: list] = {}  # {chat_id: history}
@@ -612,11 +621,13 @@ class OpenAIHelper:
         if content == '':
             content = self.config['assistant_prompt']
 
-        if self.config['model'] not in O1_MODELS:
-            # If not using 'o1' models, add a system message
-            self.conversations[chat_id] = [{"role": "system", "content": content}]
-        else:
-            self.conversations[chat_id] = []
+        # if self.config['model'] not in O1_MODELS:
+        #    # If not using 'o1' models, add a system message
+        # self.conversations[chat_id] = [{"role": "system", "content": content}]
+        # else:
+        #     self.conversations[chat_id] = []
+
+        self.conversations[chat_id] = [{"role": "system", "content": content}]
 
         self.conversations_vision[chat_id] = False
 
