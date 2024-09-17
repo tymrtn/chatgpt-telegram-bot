@@ -98,8 +98,6 @@ def are_functions_available(model: str) -> bool:
         return False
     if model in PERPLEXITY_MODELS:
         return False
-    if model in PERPLEXITY_MODELS:
-        return False
     return True
 
 
@@ -685,7 +683,7 @@ class OpenAIHelper:
         if self.config['model'] in GPT_4O_MODELS:
             return base * 31
         if self.config['model'] in O1_MODELS:
-            return base * *31
+            return base * 31
         raise NotImplementedError(
             f"Max tokens for model {self.config['model']} is not implemented yet."
         )
@@ -703,7 +701,6 @@ class OpenAIHelper:
         except KeyError:
             encoding = tiktoken.get_encoding("cl100k_base")
 
-        if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
         if model in GPT_3_MODELS + GPT_3_16K_MODELS + PERPLEXITY_MODELS:
             tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             tokens_per_name = -1  # if there's a name, the role is omitted
